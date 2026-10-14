@@ -110,6 +110,7 @@ fn single(args: &Args, output: Output, source: &Source) -> Result<ExitCode> {
     let segments = text::segments(&text);
     ensure!(!segments.is_empty(), "no prose to score in input");
     let detector = load_detector(args)?;
+    let segments = fit(&detector, segments)?;
 
     let scoring = progress::scoring(segments.len());
     let report = Report::new(&text, segments, |text| score(&detector, &scoring, text))?;
@@ -155,7 +156,8 @@ impl<'a> Plan<'a> {
 /// once the rest are done; files without prose are listed as skipped.
 fn batch(args: &Args, output: Output, files: &[PathBuf]) -> Result<ExitCode> {
     // Everything is read up front: the progress bar needs the total number
-    // of windows, and the model only loads if some file has prose.
+    // of windows (windows split to fit the model add to it as they come),
+    // and the model only loads if some file has prose.
     let texts: Vec<Result<Text>> = files.iter().map(|path| Text::read(path)).collect();
     let plans: Vec<Plan<'_>> = texts.iter().map(Plan::new).collect();
     let windows = plans
@@ -179,7 +181,12 @@ fn batch(args: &Args, output: Output, files: &[PathBuf]) -> Result<ExitCode> {
                     // The bar steps aside while the loading spinner runs.
                     slot => slot.insert(scoring.suspend(|| load_detector(args))?),
                 };
-                match Report::new(text, segments, |text| score(detector, &scoring, text)) {
+                let windows = segments.len();
+                let report = fit(detector, segments).and_then(|segments| {
+                    scoring.inc_length(segments.len().saturating_sub(windows) as u64);
+                    Report::new(text, segments, |text| score(detector, &scoring, text))
+                });
+                match report {
                     Ok(report) => scoring.suspend(|| print_scored(output, path, &report)),
                     Err(err) => {
                         failed = true;
@@ -219,6 +226,20 @@ fn print_skipped(output: Output, path: &Path, reason: &str) {
             println!("{}\nskipped: {reason}\n", path.display());
         }
     }
+}
+
+/// Splits the windows `detector` can't read whole into pieces it can, each
+/// then scored and shown as a window of its own.
+fn fit<'a>(detector: &Detector, segments: Vec<Segment<'a>>) -> Result<Vec<Segment<'a>>> {
+    let mut fitted = Vec::with_capacity(segments.len());
+    for segment in segments {
+        let lines = segment.lines.clone();
+        let pieces = segment
+            .split_to_fit(detector.token_limit(), |text| detector.tokens(text))
+            .with_context(|| format!("failed to measure lines {lines:?}"))?;
+        fitted.extend(pieces);
+    }
+    Ok(fitted)
 }
 
 /// Scores `text`, advancing `bar` by one window.

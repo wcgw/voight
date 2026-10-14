@@ -12,7 +12,7 @@ use candle_nn::{LayerNorm, Linear, VarBuilder};
 use candle_transformers::models::{debertav2, modernbert};
 use hf_hub::api::sync::ApiBuilder;
 use hf_hub::{Cache, Repo, RepoType};
-use tokenizers::{Tokenizer, TruncationParams};
+use tokenizers::{PostProcessor, Tokenizer, TruncationParams};
 
 use crate::probability::Probability;
 
@@ -20,7 +20,7 @@ use crate::probability::Probability;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum Model {
     /// DeBERTa-v3-large, <https://huggingface.co/ShantanuT01/gradient-ai-text-detector>;
-    /// reads at most 512 tokens of each window and ignores the rest
+    /// reads 512 tokens at a time, so longer windows are split
     Gradient,
     /// ModernBERT-large, <https://huggingface.co/ShantanuT01/vanguard-ai-text-detector>
     Vanguard,
@@ -43,10 +43,8 @@ impl Model {
         }
     }
 
-    /// Inputs are truncated to this many tokens. Windows from
-    /// [`crate::text::segments`] stay below vanguard's limit. The longest
-    /// can exceed gradient's, the length it was trained on; it scores their
-    /// first 512 tokens.
+    /// The most tokens the model reads at once, special tokens included:
+    /// gradient's is the length it was trained on.
     fn max_tokens(self) -> usize {
         match self {
             Self::Vanguard => 1024,
@@ -129,6 +127,10 @@ impl ModelFiles {
 /// A loaded classifier.
 pub struct Detector {
     tokenizer: Tokenizer,
+    /// The same tokenizer without truncation, for measuring text.
+    counter: Tokenizer,
+    /// The most tokens of text the model reads, special tokens aside.
+    token_limit: usize,
     network: Network,
     device: Device,
 }
@@ -155,6 +157,14 @@ impl Detector {
         // the padding would be pooled (vanguard) or attended to (gradient)
         // along with the text.
         tokenizer.with_padding(None);
+        let counter = tokenizer.clone();
+        let specials = tokenizer
+            .get_post_processor()
+            .map_or(0, |processor| processor.added_tokens(false));
+        let token_limit = model.max_tokens().saturating_sub(specials);
+        // Text longer than the limit should have been split with
+        // `token_limit` and `tokens`; this keeps any that wasn't within
+        // what the model can read.
         tokenizer
             .with_truncation(Some(TruncationParams {
                 max_length: model.max_tokens(),
@@ -200,9 +210,26 @@ impl Detector {
         };
         Ok(Self {
             tokenizer,
+            counter,
+            token_limit,
             network,
             device,
         })
+    }
+
+    /// The most tokens of text [`Self::score`] reads; it ignores the rest.
+    pub fn token_limit(&self) -> usize {
+        self.token_limit
+    }
+
+    /// The number of tokens in `text`, not counting the special tokens the
+    /// model adds around it.
+    pub fn tokens(&self, text: &str) -> Result<usize> {
+        let encoding = self
+            .counter
+            .encode(text, false)
+            .map_err(anyhow::Error::from_boxed)?;
+        Ok(encoding.len())
     }
 
     /// The probability that `text` was written by an LLM.

@@ -103,6 +103,39 @@ fn vanguard_scores_llm_text_high_and_human_text_low() {
     assert!(percent(&voight(&["--model", "vanguard", HUMAN], "")) < 50);
 }
 
+/// A single window of prose, 198 words long, that takes up about 790 of
+/// gradient's tokens and 760 of vanguard's.
+fn token_heavy_window() -> String {
+    "Install it under /usr/lib64/libfoo-3.so and set \
+     FOO_HOME=~/.config/foo-bar/qux.toml before running fooctl --sync. "
+        .repeat(18)
+}
+
+/// The number of windows in a `--verbose` breakdown.
+fn breakdown_rows(output: &Output) -> usize {
+    assert!(output.status.success(), "{output:?}");
+    stdout(output).lines().count() - 2 // the header and the total
+}
+
+#[test]
+#[ignore = "needs the 1.7 GB detector model"]
+fn windows_longer_than_the_model_reads_are_split_and_shaded_apart() {
+    let text = token_heavy_window();
+    assert_eq!(breakdown_rows(&voight(&["--verbose"], &text)), 2);
+    let heatmap = voight(&["--heatmap"], &text);
+    assert!(heatmap.status.success(), "{heatmap:?}");
+    let heatmap = stdout(&heatmap);
+    let (body, _footer) = heatmap.rsplit_once("\n\n").expect("a footer");
+    assert_eq!(body.matches("\x1b[30;48;2;").count(), 2, "{body:?}");
+}
+
+#[test]
+#[ignore = "needs the 1.5 GB vanguard model"]
+fn vanguard_reads_the_same_window_whole() {
+    let output = voight(&["--verbose", "--model", "vanguard"], &token_heavy_window());
+    assert_eq!(breakdown_rows(&output), 1);
+}
+
 #[test]
 #[ignore = "needs the 1.7 GB detector model"]
 fn mixed_text_scores_between_its_parts() {
