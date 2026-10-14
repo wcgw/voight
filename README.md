@@ -1,6 +1,7 @@
 # voight
 
-Estimates how much of a text was written by an LLM.
+[Voight](https://en.wikipedia.org/wiki/Blade_Runner#Voight-Kampff_machine) Estimates how much of a text was written 
+by an LLM.
 
 Splits text into windows of prose (~100–400 words, fenced code skipped). Each
 window scored by a ModernBERT classifier fine-tuned on human vs LLM-written
