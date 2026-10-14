@@ -4,10 +4,10 @@ voight (inpired by the
 [Voight-Kampff machine from Blade Runner](https://en.wikipedia.org/wiki/Blade_Runner#Voight-Kampff_machine)) 
 estimates how much of a text was written by an LLM.
 
-Splits text into windows of prose (~100–400 words, fenced code skipped). Each
-window scored by a DeBERTa classifier (default) or a ModernBERT one
-(`--model vanguard`), both fine-tuned on human vs LLM-written text. Overall
-figure = word-weighted mean of window scores.
+Splits text into windows of prose (~100–400 words, split smaller when too long
+for the model; fenced code skipped). Each window scored by a DeBERTa classifier
+(default) or a ModernBERT one (`--model vanguard`), both fine-tuned on human vs
+LLM-written text. Overall figure = word-weighted mean of window scores.
 
 **No detector reliable enough to use as evidence of authorship.**
 
