@@ -1,9 +1,10 @@
 //! `voight` estimates how much of a text was written by an LLM.
 //!
 //! The text is split into windows of prose (paragraphs grouped into about
-//! 100–400 words, fenced code skipped). Each window is scored by a ModernBERT
-//! classifier fine-tuned to tell human from LLM-written text, and the overall
-//! figure is the word-weighted mean of the window scores.
+//! 100–400 words, fenced code skipped). Each window is scored by a classifier
+//! fine-tuned to tell human from LLM-written text (DeBERTa "gradient" by
+//! default, or ModernBERT "vanguard"), and the overall figure is the
+//! word-weighted mean of the window scores.
 //!
 //! No detector is reliable enough to be used as evidence of authorship.
 
@@ -23,7 +24,7 @@ use candle_core::Device;
 use clap::Parser;
 use indicatif::ProgressBar;
 
-use crate::detector::{Detector, ModelFiles};
+use crate::detector::{Detector, Model, ModelFiles};
 use crate::heatmap::Heatmap;
 use crate::input::{Input, Source, Text};
 use crate::probability::Probability;
@@ -34,7 +35,7 @@ use crate::text::Segment;
 ///
 /// Prints the estimated share of the text as a percentage, or one line per
 /// file when given several files or a directory. The first run downloads the
-/// detector model (about 1.5 GB) into the Hugging Face cache. No detector is
+/// detector model (about 1.7 GB) into the Hugging Face cache. No detector is
 /// reliable enough to be used as evidence of authorship.
 #[derive(Debug, Parser)]
 #[command(version, about)]
@@ -54,8 +55,13 @@ struct Args {
     #[arg(long, conflicts_with = "verbose")]
     heatmap: bool,
 
+    /// The detector model to run.
+    #[arg(long, value_enum, default_value_t = Model::Gradient)]
+    model: Model,
+
     /// Load the model from DIR (config.json, tokenizer.json,
-    /// model.safetensors) instead of the Hugging Face cache.
+    /// model.safetensors) instead of the Hugging Face cache; it must be the
+    /// one --model names.
     #[arg(long, value_name = "DIR")]
     model_dir: Option<PathBuf>,
 
@@ -226,11 +232,16 @@ fn score(detector: &Detector, bar: &ProgressBar, text: &str) -> Result<Probabili
 fn load_detector(args: &Args) -> Result<Detector> {
     let files = match &args.model_dir {
         Some(dir) => ModelFiles::in_dir(dir),
-        None => ModelFiles::fetch()?,
+        None => ModelFiles::fetch(args.model)?,
     };
     let device = if args.cpu { Device::Cpu } else { gpu_or_cpu() };
-    let loading = progress::spinner(format!("Loading the detector onto {}", describe(&device)));
-    let detector = Detector::load(&files, device).context("failed to load the detector")?;
+    let loading = progress::spinner(format!(
+        "Loading the {} detector onto {}",
+        args.model,
+        describe(&device)
+    ));
+    let detector = Detector::load(args.model, &files, device)
+        .with_context(|| format!("failed to load the detector ({})", args.model))?;
     loading.finish_and_clear();
     Ok(detector)
 }

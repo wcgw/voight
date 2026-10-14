@@ -9,12 +9,13 @@ const LLM_STYLED: &str = "tests/fixtures/llm-styled.md";
 const HUMAN: &str = "tests/fixtures/human.txt";
 
 /// Runs voight with `args` and `stdin`. When `VOIGHT_MODEL_DIR` is set and
-/// `args` don't name a model dir, the model is loaded from there instead of
-/// the Hugging Face cache.
+/// `args` name neither a model nor a model dir, the default model is loaded
+/// from there instead of the Hugging Face cache.
 fn voight(args: &[&str], stdin: &str) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_voight"));
     if let Some(dir) = std::env::var_os("VOIGHT_MODEL_DIR")
         && !args.contains(&"--model-dir")
+        && !args.contains(&"--model")
     {
         command.arg("--model-dir").arg(dir);
     }
@@ -72,14 +73,38 @@ fn missing_model_dir_fails() {
 }
 
 #[test]
-#[ignore = "needs the 1.5 GB detector model"]
+fn model_dir_is_loaded_as_the_named_model() {
+    let args = ["--model", "vanguard", "--model-dir", "does/not/exist"];
+    let err = stderr(&voight(&args, "Some prose."));
+    assert!(
+        err.contains("failed to load the detector (vanguard)"),
+        "{err}"
+    );
+    assert!(err.contains("does/not/exist/config.json"), "{err}");
+}
+
+#[test]
+fn unknown_model_is_rejected() {
+    let err = stderr(&voight(&["--model", "nope"], "Some prose."));
+    assert!(err.contains("invalid value 'nope'"), "{err}");
+}
+
+#[test]
+#[ignore = "needs the 1.7 GB detector model"]
 fn scores_llm_text_high_and_human_text_low() {
     assert!(percent(&voight(&[LLM_STYLED], "")) > 50);
     assert!(percent(&voight(&[HUMAN], "")) < 50);
 }
 
 #[test]
-#[ignore = "needs the 1.5 GB detector model"]
+#[ignore = "needs the 1.5 GB vanguard model"]
+fn vanguard_scores_llm_text_high_and_human_text_low() {
+    assert!(percent(&voight(&["--model", "vanguard", LLM_STYLED], "")) > 50);
+    assert!(percent(&voight(&["--model", "vanguard", HUMAN], "")) < 50);
+}
+
+#[test]
+#[ignore = "needs the 1.7 GB detector model"]
 fn mixed_text_scores_between_its_parts() {
     let llm = std::fs::read_to_string(LLM_STYLED).expect("fixture");
     let human = std::fs::read_to_string(HUMAN).expect("fixture");
@@ -92,7 +117,7 @@ fn mixed_text_scores_between_its_parts() {
 }
 
 #[test]
-#[ignore = "needs the 1.5 GB detector model"]
+#[ignore = "needs the 1.7 GB detector model"]
 fn reads_stdin_when_no_file_or_dash() {
     let text = std::fs::read_to_string(LLM_STYLED).expect("fixture");
     let from_file = percent(&voight(&[LLM_STYLED], ""));
@@ -101,7 +126,7 @@ fn reads_stdin_when_no_file_or_dash() {
 }
 
 #[test]
-#[ignore = "needs the 1.5 GB detector model"]
+#[ignore = "needs the 1.7 GB detector model"]
 fn verbose_shows_each_window_and_the_total() {
     let llm = std::fs::read_to_string(LLM_STYLED).expect("fixture");
     let human = std::fs::read_to_string(HUMAN).expect("fixture");
@@ -187,7 +212,7 @@ fn empty_directory_is_an_error() {
 }
 
 #[test]
-#[ignore = "needs the 1.5 GB detector model"]
+#[ignore = "needs the 1.7 GB detector model"]
 fn batch_scores_each_file_of_a_directory_in_order() {
     let output = voight(&["tests/fixtures"], "");
     assert!(output.status.success(), "{output:?}");
@@ -204,7 +229,7 @@ fn batch_scores_each_file_of_a_directory_in_order() {
 }
 
 #[test]
-#[ignore = "needs the 1.5 GB detector model"]
+#[ignore = "needs the 1.7 GB detector model"]
 fn batch_keeps_going_past_failures() {
     let output = voight(&[HUMAN, "does/not/exist.txt", LLM_STYLED], "");
     let err = stderr(&output);
@@ -217,7 +242,7 @@ fn batch_keeps_going_past_failures() {
 }
 
 #[test]
-#[ignore = "needs the 1.5 GB detector model"]
+#[ignore = "needs the 1.7 GB detector model"]
 fn verbose_batch_breaks_down_each_file() {
     let output = voight(&["--verbose", HUMAN, LLM_STYLED], "");
     assert!(output.status.success(), "{output:?}");
@@ -251,7 +276,7 @@ fn heatmap_and_verbose_are_exclusive() {
 }
 
 #[test]
-#[ignore = "needs the 1.5 GB detector model"]
+#[ignore = "needs the 1.7 GB detector model"]
 fn heatmap_prints_the_input_shaded_then_the_overall_score() {
     let output = voight(&["--heatmap", LLM_STYLED], "");
     assert!(output.status.success(), "{output:?}");
@@ -273,7 +298,7 @@ fn heatmap_prints_the_input_shaded_then_the_overall_score() {
 }
 
 #[test]
-#[ignore = "needs the 1.5 GB detector model"]
+#[ignore = "needs the 1.7 GB detector model"]
 fn heatmap_batch_shows_each_file_under_its_path() {
     let output = voight(&["--heatmap", HUMAN, LLM_STYLED], "");
     assert!(output.status.success(), "{output:?}");

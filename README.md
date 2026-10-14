@@ -5,8 +5,9 @@ voight (inpired by the
 estimates how much of a text was written by an LLM.
 
 Splits text into windows of prose (~100–400 words, fenced code skipped). Each
-window scored by a ModernBERT classifier fine-tuned on human vs LLM-written
-text. Overall figure = word-weighted mean of window scores.
+window scored by a DeBERTa classifier (default) or a ModernBERT one
+(`--model vanguard`), both fine-tuned on human vs LLM-written text. Overall
+figure = word-weighted mean of window scores.
 
 **No detector reliable enough to use as evidence of authorship.**
 
@@ -16,7 +17,7 @@ text. Overall figure = word-weighted mean of window scores.
 cargo install --path . --locked
 ```
 
-First run downloads the model (~1.5 GB) into the Hugging Face cache.
+First run downloads the model (~1.7 GB; vanguard ~1.5 GB) into the Hugging Face cache.
 
 ## Usage
 
@@ -48,6 +49,9 @@ voight --verbose essay.md
 
 # Heatmap
 voight --heatmap essay.md | less -R
+
+# The other model
+voight --model vanguard essay.md
 ```
 
 ## Output
