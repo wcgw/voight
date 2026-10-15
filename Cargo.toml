@@ -3,6 +3,11 @@ name = "voight"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
+description = "Estimates how much of a text was written by an LLM, with a DeBERTa or ModernBERT classifier fine-tuned on human vs LLM-written text"
+repository = "https://github.com/wcgw/voight"
+readme = "README.md"
+keywords = ["llm", "ai-detection", "ai-generated-text", "classifier", "cli"]
+categories = ["command-line-utilities", "text-processing", "artificial-intelligence"]
 
 [dependencies]
 anyhow = "1.0.104"
