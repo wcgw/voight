@@ -14,6 +14,7 @@ use hf_hub::api::sync::ApiBuilder;
 use hf_hub::{Cache, Repo, RepoType};
 use tokenizers::{PostProcessor, Tokenizer, TruncationParams};
 
+use crate::fingerprint;
 use crate::probability::Probability;
 
 /// A detector model.
@@ -222,21 +223,22 @@ impl Detector {
         self.token_limit
     }
 
-    /// The number of tokens in `text`, not counting the special tokens the
-    /// model adds around it.
+    /// The number of tokens in `text`, as [`Self::score`] reads it, not
+    /// counting the special tokens the model adds around it.
     pub fn tokens(&self, text: &str) -> Result<usize> {
         let encoding = self
             .counter
-            .encode(text, false)
+            .encode(&*fingerprint::normalize(text), false)
             .map_err(anyhow::Error::from_boxed)?;
         Ok(encoding.len())
     }
 
-    /// The probability that `text` was written by an LLM.
+    /// The probability that `text` was written by an LLM, read with any
+    /// disguise from detectors undone (see [`fingerprint::normalize`]).
     pub fn score(&self, text: &str) -> Result<Probability> {
         let encoding = self
             .tokenizer
-            .encode(text, true)
+            .encode(&*fingerprint::normalize(text), true)
             .map_err(anyhow::Error::from_boxed)?;
         let ids = Tensor::new(encoding.get_ids(), &self.device)?.unsqueeze(0)?;
         let logit = match &self.network {

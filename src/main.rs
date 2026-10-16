@@ -9,6 +9,7 @@
 //! No detector is reliable enough to be used as evidence of authorship.
 
 mod detector;
+mod fingerprint;
 mod heatmap;
 mod input;
 mod probability;
@@ -25,6 +26,7 @@ use clap::Parser;
 use indicatif::ProgressBar;
 
 use crate::detector::{Detector, Model, ModelFiles};
+use crate::fingerprint::Fingerprints;
 use crate::heatmap::Heatmap;
 use crate::input::{Input, Source, Text};
 use crate::probability::Probability;
@@ -34,7 +36,10 @@ use crate::text::Segment;
 /// Estimate how much of a text was written by an LLM.
 ///
 /// Prints the estimated share of the text as a percentage, or one line per
-/// file when given several files or a directory. The first run downloads the
+/// file when given several files or a directory. Ways of hiding text from
+/// detectors (invisible characters, look-alike letters from other scripts)
+/// are undone before scoring and noted on stderr, as is residue that chatbot
+/// interfaces leave in text copied from them. The first run downloads the
 /// detector model (about 1.7 GB) into the Hugging Face cache. No detector is
 /// reliable enough to be used as evidence of authorship.
 #[derive(Debug, Parser)]
@@ -121,6 +126,7 @@ fn single(args: &Args, output: Output, source: &Source) -> Result<ExitCode> {
         Output::Breakdown => print!("{report}"),
         Output::Heatmap => print!("{}", Heatmap::new(&report)),
     }
+    print_fingerprints("", &report);
     Ok(ExitCode::SUCCESS)
 }
 
@@ -187,7 +193,10 @@ fn batch(args: &Args, output: Output, files: &[PathBuf]) -> Result<ExitCode> {
                     Report::new(text, segments, |text| score(detector, &scoring, text))
                 });
                 match report {
-                    Ok(report) => scoring.suspend(|| print_scored(output, path, &report)),
+                    Ok(report) => scoring.suspend(|| {
+                        print_scored(output, path, &report);
+                        print_fingerprints(&format!("{}: ", path.display()), &report);
+                    }),
                     Err(err) => {
                         failed = true;
                         scoring.suspend(|| eprintln!("voight: {}: {err:#}", path.display()));
@@ -216,6 +225,15 @@ fn print_scored(output: Output, path: &Path, report: &Report<'_>) {
         Output::Percent => println!("{:>4}  {}", report.overall(), path.display()),
         Output::Breakdown => println!("{}\n{report}", path.display()),
         Output::Heatmap => println!("{}\n{}", path.display(), Heatmap::new(report)),
+    }
+}
+
+/// Prints on stderr, after `prefix`, a note for each kind of fingerprint
+/// in `report`'s windows.
+fn print_fingerprints(prefix: &str, report: &Report<'_>) {
+    let fingerprints = Fingerprints::find(report.windows().map(|(segment, _)| segment));
+    for note in fingerprints.notes() {
+        eprintln!("voight: {prefix}{note}");
     }
 }
 

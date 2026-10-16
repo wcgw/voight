@@ -9,6 +9,12 @@ for the model; fenced code skipped). Each window scored by a DeBERTa classifier
 (default) or a ModernBERT one (`--model vanguard`), both fine-tuned on human vs
 LLM-written text. Overall figure = word-weighted mean of window scores.
 
+Common ways of hiding text from detectors are undone before scoring:
+invisible characters (zero-width spaces, soft hyphens, …) removed, look-alike
+letters from other scripts inside Latin words (Cyrillic `а` for `a`) replaced,
+fullwidth, styled and other compatibility forms of letters and unusual spaces
+made plain. Other text reaches the model unchanged.
+
 **No detector reliable enough to use as evidence of authorship.**
 
 ## Install
@@ -71,6 +77,18 @@ Batch: one line per file, score aligned.
 
 Files without scorable prose are listed as skipped. Unreadable files printed to
 stderr; exit status non-zero.
+
+Notes on stderr (prefixed with the path in a batch) say what was undone before
+scoring, and point at chatbot residue: text that chatbot interfaces leave in
+copied answers (`utm_source=chatgpt.com` links, `contentReference[oaicite:…]`,
+`turn0search…` citations, "As an AI language model").
+
+```
+voight: 140 invisible characters inside or between words, removed before scoring
+voight: chatbot residue on line 14: utm_source=chatgpt.com (3 times)
+```
+
+Copy-paste and mojibake leave stray invisible characters in human text too.
 
 ## GPU
 
