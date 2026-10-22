@@ -20,12 +20,14 @@ const ABBREVIATIONS: &[&str] = &[
 
 /// A window of prose from the input, scored as a unit.
 #[derive(Debug, PartialEq)]
+#[non_exhaustive]
 pub struct Segment<'a> {
     pub text: &'a str,
     /// Byte range of `text` in the input.
     pub range: Range<usize>,
     /// 1-based line numbers in the input.
     pub lines: RangeInclusive<usize>,
+    /// The words in `text`, which weigh its score in the overall figure.
     pub words: usize,
 }
 
@@ -59,7 +61,7 @@ impl<'a> Segment<'a> {
     /// can read each whole. Pieces end at sentence boundaries, or at word
     /// boundaries inside a sentence too long by itself, and are as equal in
     /// size as those allow. A single word too long stays as it is.
-    pub fn split_to_fit(
+    pub(crate) fn split_to_fit(
         self,
         limit: usize,
         mut size: impl FnMut(&str) -> Result<usize>,

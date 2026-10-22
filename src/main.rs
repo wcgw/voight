@@ -1,37 +1,20 @@
-//! `voight` estimates how much of a text was written by an LLM.
-//!
-//! The text is split into windows of prose (paragraphs grouped into about
-//! 100–400 words, fenced code skipped). Each window is scored by a classifier
-//! fine-tuned to tell human from LLM-written text (DeBERTa "gradient" by
-//! default, or ModernBERT "vanguard"), and the overall figure is the
-//! word-weighted mean of the window scores.
-//!
-//! No detector is reliable enough to be used as evidence of authorship.
+//! The `voight` command: the [`voight`] library behind command-line
+//! arguments, with progress on stderr.
 
-mod detector;
-mod fingerprint;
-mod heatmap;
 mod input;
-mod probability;
 mod progress;
-mod report;
-mod text;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::{Context, Result, ensure};
-use candle_core::Device;
 use clap::Parser;
 use indicatif::ProgressBar;
+use voight::{
+    Detector, Device, Fingerprints, Heatmap, Model, ModelFiles, Probability, Report, Segment,
+};
 
-use crate::detector::{Detector, Model, ModelFiles};
-use crate::fingerprint::Fingerprints;
-use crate::heatmap::Heatmap;
 use crate::input::{Input, Source, Text};
-use crate::probability::Probability;
-use crate::report::Report;
-use crate::text::Segment;
 
 /// Estimate how much of a text was written by an LLM.
 ///
@@ -112,10 +95,10 @@ fn main() -> Result<ExitCode> {
 fn single(args: &Args, output: Output, source: &Source) -> Result<ExitCode> {
     let text = source.read()?;
     // Checked before loading the model, which takes a while.
-    let segments = text::segments(&text);
+    let segments = voight::segments(&text);
     ensure!(!segments.is_empty(), "no prose to score in input");
     let detector = load_detector(args)?;
-    let segments = fit(&detector, segments)?;
+    let segments = detector.split_to_fit(segments)?;
 
     let scoring = progress::scoring(segments.len());
     let report = Report::new(&text, segments, |text| score(&detector, &scoring, text))?;
@@ -146,7 +129,7 @@ impl<'a> Plan<'a> {
             Err(err) => Self::Fail(err),
             Ok(Text::NotUtf8) => Self::Skip("not UTF-8 text"),
             Ok(Text::Utf8(text)) => {
-                let segments = text::segments(text);
+                let segments = voight::segments(text);
                 if segments.is_empty() {
                     Self::Skip("no prose")
                 } else {
@@ -188,7 +171,7 @@ fn batch(args: &Args, output: Output, files: &[PathBuf]) -> Result<ExitCode> {
                     slot => slot.insert(scoring.suspend(|| load_detector(args))?),
                 };
                 let windows = segments.len();
-                let report = fit(detector, segments).and_then(|segments| {
+                let report = detector.split_to_fit(segments).and_then(|segments| {
                     scoring.inc_length(segments.len().saturating_sub(windows) as u64);
                     Report::new(text, segments, |text| score(detector, &scoring, text))
                 });
@@ -244,20 +227,6 @@ fn print_skipped(output: Output, path: &Path, reason: &str) {
             println!("{}\nskipped: {reason}\n", path.display());
         }
     }
-}
-
-/// Splits the windows `detector` can't read whole into pieces it can, each
-/// then scored and shown as a window of its own.
-fn fit<'a>(detector: &Detector, segments: Vec<Segment<'a>>) -> Result<Vec<Segment<'a>>> {
-    let mut fitted = Vec::with_capacity(segments.len());
-    for segment in segments {
-        let lines = segment.lines.clone();
-        let pieces = segment
-            .split_to_fit(detector.token_limit(), |text| detector.tokens(text))
-            .with_context(|| format!("failed to measure lines {lines:?}"))?;
-        fitted.extend(pieces);
-    }
-    Ok(fitted)
 }
 
 /// Scores `text`, advancing `bar` by one window.

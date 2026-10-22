@@ -16,9 +16,13 @@ use tokenizers::{PostProcessor, Tokenizer, TruncationParams};
 
 use crate::fingerprint;
 use crate::probability::Probability;
+use crate::report::Report;
+use crate::text::Segment;
 
 /// A detector model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
+#[non_exhaustive]
 pub enum Model {
     /// DeBERTa-v3-large, <https://huggingface.co/ShantanuT01/gradient-ai-text-detector>;
     /// reads 512 tokens at a time, so longer windows are split
@@ -89,7 +93,8 @@ impl ModelFiles {
     }
 
     /// The pinned revision of `model` from the Hugging Face cache,
-    /// downloading it the first time.
+    /// downloading it the first time, with a notice and a progress bar on
+    /// stderr when it is a terminal.
     pub fn fetch(model: Model) -> Result<Self> {
         let pinned = Repo::with_revision(
             model.repo().to_owned(),
@@ -126,6 +131,10 @@ impl ModelFiles {
 }
 
 /// A loaded classifier.
+///
+/// [`Self::report`] scores a whole text; [`Self::split_to_fit`] and
+/// [`Report::new`] do the same in steps, for callers that report progress
+/// as each window is scored.
 pub struct Detector {
     tokenizer: Tokenizer,
     /// The same tokenizer without truncation, for measuring text.
@@ -146,7 +155,18 @@ enum Network {
     DeBerta(Box<debertav2::DebertaV2SeqClassificationModel>),
 }
 
+impl fmt::Debug for Detector {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Detector")
+            .field("token_limit", &self.token_limit)
+            .field("device", &self.device)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Detector {
+    /// Loads `model`'s weights from `files` onto `device`. Fails if a file
+    /// can't be read or doesn't hold `model`.
     pub fn load(model: Model, files: &ModelFiles, device: Device) -> Result<Self> {
         let config = read(&files.config)?;
         let parse_error = || format!("failed to parse {}", files.config.display());
@@ -164,8 +184,8 @@ impl Detector {
             .map_or(0, |processor| processor.added_tokens(false));
         let token_limit = model.max_tokens().saturating_sub(specials);
         // Text longer than the limit should have been split with
-        // `token_limit` and `tokens`; this keeps any that wasn't within
-        // what the model can read.
+        // `split_to_fit`; this keeps any that wasn't within what the model
+        // can read.
         tokenizer
             .with_truncation(Some(TruncationParams {
                 max_length: model.max_tokens(),
@@ -218,14 +238,31 @@ impl Detector {
         })
     }
 
-    /// The most tokens of text [`Self::score`] reads; it ignores the rest.
-    pub fn token_limit(&self) -> usize {
-        self.token_limit
+    /// Scores `text`'s windows of prose (see [`crate::segments`]), split to
+    /// fit the model. Fails if `text` holds no prose or the model fails.
+    pub fn report<'a>(&self, text: &'a str) -> Result<Report<'a>> {
+        let segments = self.split_to_fit(crate::segments(text))?;
+        Report::new(text, segments, |text| self.score(text))
+    }
+
+    /// `segments` with each window the model can't read whole split into
+    /// pieces it can, at sentence boundaries where possible. Each piece is
+    /// then scored as a window of its own.
+    pub fn split_to_fit<'a>(&self, segments: Vec<Segment<'a>>) -> Result<Vec<Segment<'a>>> {
+        let mut fitted = Vec::with_capacity(segments.len());
+        for segment in segments {
+            let lines = segment.lines.clone();
+            let pieces = segment
+                .split_to_fit(self.token_limit, |text| self.tokens(text))
+                .with_context(|| format!("failed to measure lines {lines:?}"))?;
+            fitted.extend(pieces);
+        }
+        Ok(fitted)
     }
 
     /// The number of tokens in `text`, as [`Self::score`] reads it, not
     /// counting the special tokens the model adds around it.
-    pub fn tokens(&self, text: &str) -> Result<usize> {
+    fn tokens(&self, text: &str) -> Result<usize> {
         let encoding = self
             .counter
             .encode(&*fingerprint::normalize(text), false)
@@ -234,7 +271,9 @@ impl Detector {
     }
 
     /// The probability that `text` was written by an LLM, read with any
-    /// disguise from detectors undone (see [`fingerprint::normalize`]).
+    /// disguise from detectors undone (see [`fingerprint::normalize`]). Reads
+    /// only as many tokens as the model can; [`Self::split_to_fit`] splits
+    /// longer windows.
     pub fn score(&self, text: &str) -> Result<Probability> {
         let encoding = self
             .tokenizer

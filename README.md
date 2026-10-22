@@ -90,6 +90,26 @@ voight: chatbot residue on line 14: utm_source=chatgpt.com (3 times)
 
 Copy-paste and mojibake leave stray invisible characters in human text too.
 
+## Library
+
+Scoring is a library too. Depend on it with `default-features = false` to
+leave out the command (and clap).
+
+```rust
+use voight::{Detector, Device, Model, ModelFiles};
+
+let model = Model::Gradient;
+let detector = Detector::load(model, &ModelFiles::fetch(model)?, Device::Cpu)?;
+let report = detector.report(&text)?;
+println!("{}", report.overall());
+```
+
+Whole program, with window scores and notes, in `examples/score.rs`:
+
+```sh
+cargo run --release --example score -- essay.md
+```
+
 ## GPU
 
 - **Apple silicon**: Metal by default (already compiled in).
