@@ -27,8 +27,10 @@ struct Scored<'a> {
 
 impl<'a> Report<'a> {
     /// Scores each of `input`'s segments by its [unwrapped](Segment::unwrapped)
-    /// text with `score`. Fails if any score fails, or if the segments hold
-    /// no words to weigh the scores by.
+    /// text with `score`. The segments must be in input order, as
+    /// [`crate::segments`] and [`crate::Detector::split_to_fit`] give them.
+    /// Fails if any score fails, or if the segments hold no words to weigh
+    /// the scores by.
     pub fn new(
         input: &'a str,
         segments: Vec<Segment<'a>>,

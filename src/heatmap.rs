@@ -34,6 +34,7 @@ impl Rgb {
 
 /// A report's input with its windows shaded; ends with a footer giving the
 /// overall score and the colour scale.
+#[derive(Debug)]
 pub struct Heatmap<'r, 'a>(&'r Report<'a>);
 
 impl<'r, 'a> Heatmap<'r, 'a> {

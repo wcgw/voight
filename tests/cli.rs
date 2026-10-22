@@ -172,6 +172,76 @@ fn verbose_shows_each_window_and_the_total() {
     assert!(lines.len() >= 4, "expected a window per fixture: {stdout}");
 }
 
+/// `text` disguised the way tools that hide text from detectors do it: a
+/// zero width space inside each longer word, and Cyrillic `о` for each `o`.
+fn disguised(text: &str) -> String {
+    text.split(' ')
+        .map(|word| match word.char_indices().nth(2) {
+            Some((at, _)) if word.chars().count() > 3 => {
+                format!("{}\u{200B}{}", &word[..at], &word[at..])
+            }
+            _ => word.to_owned(),
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace('o', "\u{043E}")
+}
+
+/// What voight noted on stderr.
+fn notes(output: &Output) -> String {
+    assert!(output.status.success(), "{output:?}");
+    String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
+#[test]
+#[ignore = "needs the 1.7 GB detector model"]
+fn disguised_text_scores_as_the_plain_text_and_is_noted() {
+    let text = fs::read_to_string(LLM_STYLED).expect("fixture");
+    let plain = voight(&[], &text);
+    assert_eq!(notes(&plain), "");
+    let disguised = voight(&[], &disguised(&text));
+    assert_eq!(percent(&disguised), percent(&plain));
+    let notes = notes(&disguised);
+    assert!(
+        notes.contains("invisible characters inside or between words, removed before scoring"),
+        "{notes}"
+    );
+    assert!(
+        notes.contains("look-alike letters from other scripts in Latin words, replaced"),
+        "{notes}"
+    );
+}
+
+#[test]
+#[ignore = "needs the 1.7 GB detector model"]
+fn chatbot_residue_is_noted_with_its_line() {
+    let human = fs::read_to_string(HUMAN).expect("fixture");
+    let human = human.trim_end();
+    let link = "See [the source](https://example.com/?utm_source=chatgpt.com).";
+    let notes = notes(&voight(&[], &format!("{human}\n\n{link}\n")));
+    let line = human.lines().count() + 2;
+    assert_eq!(
+        notes,
+        format!("voight: chatbot residue on line {line}: utm_source=chatgpt.com\n")
+    );
+}
+
+#[test]
+#[ignore = "needs the 1.7 GB detector model"]
+fn batch_notes_name_the_file() {
+    let dir = scratch_dir("batch-notes");
+    let file = dir.join("cited.md");
+    fs::write(&file, "Intro.\n\nAs an AI language model, I can't.\n").unwrap();
+    let output = voight(&[HUMAN, file.to_str().unwrap()], "");
+    assert_eq!(
+        notes(&output),
+        format!(
+            "voight: {}: chatbot residue on line 3: As an AI language model\n",
+            file.display()
+        )
+    );
+}
+
 /// An empty directory under cargo's per-target scratch space.
 fn scratch_dir(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
