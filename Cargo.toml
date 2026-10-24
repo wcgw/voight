@@ -21,6 +21,12 @@ serde_json = "1.0.154"
 tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
 unicode-normalization = { version = "0.1.25", default-features = false }
 
+# candle's wgpu backend is unreleased (huggingface/candle#3379); the `wgpu`
+# feature runs on the fork it lives in instead of the candle crates above.
+candle-core-wgpu = { package = "candle-core", git = "https://github.com/KimHenrikOtte/candle", rev = "25e83d57cad096fd5f8f1c5d57ba4813597f98cb", features = ["wgpu"], optional = true }
+candle-nn-wgpu = { package = "candle-nn", git = "https://github.com/KimHenrikOtte/candle", rev = "25e83d57cad096fd5f8f1c5d57ba4813597f98cb", features = ["wgpu"], optional = true }
+candle-transformers-wgpu = { package = "candle-transformers", git = "https://github.com/KimHenrikOtte/candle", rev = "25e83d57cad096fd5f8f1c5d57ba4813597f98cb", features = ["wgpu"], optional = true }
+
 # On Apple silicon the detector runs on the GPU through Metal by default.
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 candle-core = { version = "0.11", features = ["metal"] }
@@ -40,6 +46,15 @@ default = ["cli"]
 # The `voight` command; turn it off to embed the library without clap.
 cli = ["dep:clap", "dep:indicatif"]
 # Run the detector on an NVIDIA GPU when one is available (needs the CUDA toolkit to build).
-cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda"]
+cuda = [
+    "candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda",
+    "candle-core-wgpu?/cuda", "candle-nn-wgpu?/cuda", "candle-transformers-wgpu?/cuda",
+]
 # Metal on other Macs; already on for Apple silicon.
-metal = ["candle-core/metal", "candle-nn/metal", "candle-transformers/metal"]
+metal = [
+    "candle-core/metal", "candle-nn/metal", "candle-transformers/metal",
+    "candle-core-wgpu?/metal", "candle-nn-wgpu?/metal", "candle-transformers-wgpu?/metal",
+]
+# Any other GPU (Intel, AMD; through Vulkan on Linux) when CUDA and Metal aren't
+# compiled in. Experimental: builds on a fork of candle.
+wgpu = ["dep:candle-core-wgpu", "dep:candle-nn-wgpu", "dep:candle-transformers-wgpu"]

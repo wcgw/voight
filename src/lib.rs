@@ -25,9 +25,10 @@
 //! ```
 //!
 //! The `cli` feature, on by default, builds the `voight` command; turn it
-//! off to embed the library without clap. `cuda` and `metal` let
+//! off to embed the library without clap. `cuda`, `metal` and `wgpu` let
 //! [`Device`] run the model on a GPU.
 
+mod candle;
 mod detector;
 mod fingerprint;
 mod heatmap;
@@ -35,7 +36,7 @@ mod probability;
 mod report;
 mod text;
 
-pub use candle_core::Device;
+pub use crate::candle::core::Device;
 
 pub use crate::detector::{Detector, Model, ModelFiles};
 pub use crate::fingerprint::{Fingerprints, normalize};

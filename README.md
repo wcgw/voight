@@ -115,6 +115,9 @@ cargo run --release --example score -- essay.md
 - **Apple silicon**: Metal by default (already compiled in).
 - **NVIDIA**: build with `--features cuda` (needs CUDA toolkit).
 - **Other Mac**: build with `--features metal`.
+- **Any other GPU** (Intel, AMD; Vulkan on Linux): build with `--features wgpu`.
+  Experimental: candle's wgpu backend is unreleased, so this builds on
+  [a fork](https://github.com/huggingface/candle/pull/3379).
 - Falls back to CPU with a warning if GPU fails to open.
 
 ## Tests

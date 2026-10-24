@@ -7,13 +7,13 @@ use std::io::{self, IsTerminal};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use candle_core::{DType, Device, Module, Tensor};
-use candle_nn::{LayerNorm, Linear, VarBuilder};
-use candle_transformers::models::{debertav2, modernbert};
 use hf_hub::api::sync::ApiBuilder;
 use hf_hub::{Cache, Repo, RepoType};
 use tokenizers::{PostProcessor, Tokenizer, TruncationParams};
 
+use crate::candle::core::{DType, Device, Module, Tensor};
+use crate::candle::nn::{LayerNorm, Linear, VarBuilder};
+use crate::candle::transformers::models::{debertav2, modernbert};
 use crate::fingerprint;
 use crate::probability::Probability;
 use crate::report::Report;
