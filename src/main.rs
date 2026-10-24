@@ -1,6 +1,8 @@
 //! The `voight` command: the [`voight`] library behind command-line
 //! arguments, with progress on stderr.
 
+#[expect(unused_imports, reason = "the command only picks the device")]
+mod candle;
 mod input;
 mod progress;
 
@@ -53,7 +55,8 @@ struct Args {
     #[arg(long, value_name = "DIR")]
     model_dir: Option<PathBuf>,
 
-    /// Run on the CPU even when a GPU backend (CUDA, Metal) is available.
+    /// Run on the CPU even when a GPU backend (CUDA, Metal, wgpu) is
+    /// available.
     #[arg(long)]
     cpu: bool,
 }
@@ -254,14 +257,16 @@ fn load_detector(args: &Args) -> Result<Detector> {
     Ok(detector)
 }
 
-/// The GPU backend compiled in (CUDA, else Metal), or the CPU. candle's
-/// `*_is_available` only say whether a backend was compiled in, so a GPU
-/// that fails to open falls back to the CPU with a warning.
+/// The GPU backend compiled in (CUDA, else Metal, else wgpu), or the CPU.
+/// candle's `*_is_available` only say whether a backend was compiled in, so a
+/// GPU that fails to open falls back to the CPU with a warning.
 fn gpu_or_cpu() -> Device {
-    let gpu = if candle_core::utils::cuda_is_available() {
+    let gpu = if candle::core::utils::cuda_is_available() {
         ("CUDA", Device::new_cuda(0))
-    } else if candle_core::utils::metal_is_available() {
+    } else if candle::core::utils::metal_is_available() {
         ("Metal", Device::new_metal(0))
+    } else if let Some(wgpu) = new_wgpu() {
+        ("wgpu", wgpu)
     } else {
         return Device::Cpu;
     };
@@ -274,12 +279,25 @@ fn gpu_or_cpu() -> Device {
     }
 }
 
+/// Opens the first wgpu adapter; `None` without the `wgpu` feature, as only
+/// the fork of candle it builds on has the backend.
+fn new_wgpu() -> Option<candle::core::Result<Device>> {
+    #[cfg(feature = "wgpu")]
+    {
+        Some(Device::new_wgpu(0))
+    }
+    #[cfg(not(feature = "wgpu"))]
+    {
+        None
+    }
+}
+
 fn describe(device: &Device) -> &'static str {
-    if device.is_cuda() {
-        "the GPU (CUDA)"
-    } else if device.is_metal() {
-        "the GPU (Metal)"
-    } else {
-        "the CPU"
+    match device {
+        Device::Cpu => "the CPU",
+        Device::Cuda(_) => "the GPU (CUDA)",
+        Device::Metal(_) => "the GPU (Metal)",
+        #[cfg(feature = "wgpu")]
+        Device::Wgpu(_) => "the GPU (wgpu)",
     }
 }
