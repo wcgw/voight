@@ -1,6 +1,6 @@
 [package]
 name = "voight"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
 description = "Estimates how much of a text was written by an LLM, with a DeBERTa or ModernBERT classifier fine-tuned on human vs LLM-written text"
