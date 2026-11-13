@@ -24,10 +24,13 @@
 //! # Ok::<(), anyhow::Error>(())
 //! ```
 //!
+//! [`assessor`] runs a detector on a thread of its own beside a user interface, as ghd and muttrs do.
+//!
 //! The `cli` feature, on by default, builds the `voight` command; turn it
 //! off to embed the library without clap. `cuda`, `metal` and `wgpu` let
 //! [`Device`] run the model on a GPU.
 
+pub mod assessor;
 mod candle;
 mod detector;
 mod fingerprint;
